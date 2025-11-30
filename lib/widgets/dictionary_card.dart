@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:translator/translator.dart';
-import 'dart:ui' as ui;
 import '../models/dictionary_model.dart';
 
 class DictionaryCard extends StatelessWidget {

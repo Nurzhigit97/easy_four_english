@@ -46,6 +46,10 @@ dependencies:
   
   # Translation
   translator: ^1.0.4+1
+  
+  # Speech to text for speaking stage
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

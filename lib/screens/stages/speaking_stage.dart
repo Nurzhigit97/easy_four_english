@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../models/text_model.dart';
 import '../../database/database_helper.dart';
 import '../../models/speaking_answer_model.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
 
 class SpeakingStage extends StatefulWidget {
   final TextModel text;
@@ -15,13 +17,130 @@ class SpeakingStage extends StatefulWidget {
 class _SpeakingStageState extends State<SpeakingStage> {
   final TextEditingController _answerController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isRecording = false;
+  bool _isListening = false;
+  bool _speechAvailable = false;
+  String _recognizedText = '';
   List<SpeakingAnswerModel> _previousAnswers = [];
 
   @override
   void initState() {
     super.initState();
     _loadPreviousAnswers();
+    _initializeSpeech();
+  }
+
+  Future<void> _initializeSpeech() async {
+    bool available = await _speech.initialize(
+      onStatus: (status) {
+        setState(() {
+          _isListening = status == 'listening';
+        });
+      },
+      onError: (error) {
+        setState(() {
+          _isRecording = false;
+          _isListening = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка распознавания речи: ${error.errorMsg}'),
+            ),
+          );
+        }
+      },
+    );
+    setState(() {
+      _speechAvailable = available;
+    });
+  }
+
+  Future<bool> _requestPermissions() async {
+    final status = await Permission.microphone.request();
+    if (status.isGranted) {
+      return true;
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Необходимо разрешение на использование микрофона'),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  Future<void> _startListening() async {
+    if (!_speechAvailable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Распознавание речи недоступно на этом устройстве'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final hasPermission = await _requestPermissions();
+    if (!hasPermission) return;
+
+    setState(() {
+      _isRecording = true;
+      _recognizedText = '';
+    });
+
+    await _speech.listen(
+      onResult: (result) {
+        setState(() {
+          _recognizedText = result.recognizedWords;
+
+          if (result.finalResult) {
+            // Когда распознавание завершено, добавляем текст в поле ввода
+            if (_recognizedText.isNotEmpty) {
+              final currentText = _answerController.text;
+              if (currentText.isNotEmpty && !currentText.endsWith(' ')) {
+                _answerController.text = '$currentText $_recognizedText';
+              } else {
+                _answerController.text = currentText + _recognizedText;
+              }
+              _answerController.selection = TextSelection.fromPosition(
+                TextPosition(offset: _answerController.text.length),
+              );
+            }
+            _recognizedText = '';
+          }
+        });
+      },
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 3),
+      localeId: 'ru_RU', // Можно изменить на нужный язык
+      cancelOnError: true,
+      partialResults: true,
+    );
+  }
+
+  Future<void> _stopListening() async {
+    await _speech.stop();
+    setState(() {
+      _isRecording = false;
+      _isListening = false;
+      if (_recognizedText.isNotEmpty) {
+        final currentText = _answerController.text;
+        if (currentText.isNotEmpty && !currentText.endsWith(' ')) {
+          _answerController.text = '$currentText $_recognizedText';
+        } else {
+          _answerController.text = currentText + _recognizedText;
+        }
+        _answerController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _answerController.text.length),
+        );
+        _recognizedText = '';
+      }
+    });
   }
 
   Future<void> _loadPreviousAnswers() async {
@@ -34,6 +153,7 @@ class _SpeakingStageState extends State<SpeakingStage> {
 
   @override
   void dispose() {
+    _speech.stop();
     _answerController.dispose();
     super.dispose();
   }
@@ -109,23 +229,13 @@ class _SpeakingStageState extends State<SpeakingStage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _isRecording = !_isRecording;
-                    });
-                    // TODO: Implement voice recording
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Функция записи голоса будет реализована позже',
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: _isRecording ? _stopListening : _startListening,
                   icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                  label: Text(_isRecording ? 'Остановить' : 'Записать голос'),
+                  label: Text(
+                    _isRecording ? 'Остановить запись' : 'Записать голос',
+                  ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
+                    backgroundColor: _isRecording ? Colors.red : Colors.orange,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
@@ -135,6 +245,55 @@ class _SpeakingStageState extends State<SpeakingStage> {
                 ),
               ],
             ),
+            if (_isRecording || _isListening) ...[
+              const SizedBox(height: 16),
+              Card(
+                color: Colors.orange.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.orange,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Идет запись...',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_recognizedText.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                _recognizedText,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
