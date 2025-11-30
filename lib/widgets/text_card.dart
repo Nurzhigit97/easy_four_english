@@ -70,7 +70,10 @@ class TextCard extends StatelessWidget {
                               children: [
                                 Icon(Icons.delete, size: 20, color: Colors.red),
                                 SizedBox(width: 8),
-                                Text('Удалить', style: TextStyle(color: Colors.red)),
+                                Text(
+                                  'Удалить',
+                                  style: TextStyle(color: Colors.red),
+                                ),
                               ],
                             ),
                           ),
@@ -81,10 +84,7 @@ class TextCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 text.description,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -95,4 +95,3 @@ class TextCard extends StatelessWidget {
     );
   }
 }
-

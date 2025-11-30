@@ -40,6 +40,12 @@ dependencies:
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.3
   path_provider: ^2.1.1
+  
+  # TTS for listening stage
+  flutter_tts: ^4.0.2
+  
+  # Translation
+  translator: ^1.0.4+1
 
 dev_dependencies:
   flutter_test:

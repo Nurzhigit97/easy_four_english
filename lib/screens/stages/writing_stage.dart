@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../models/text_model.dart';
+import '../../database/database_helper.dart';
+import '../../models/writing_answer_model.dart';
 
 class WritingStage extends StatefulWidget {
   final TextModel text;
 
-  const WritingStage({
-    super.key,
-    required this.text,
-  });
+  const WritingStage({super.key, required this.text});
 
   @override
   State<WritingStage> createState() => _WritingStageState();
@@ -15,6 +14,22 @@ class WritingStage extends StatefulWidget {
 
 class _WritingStageState extends State<WritingStage> {
   final TextEditingController _writingController = TextEditingController();
+  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  List<WritingAnswerModel> _previousWritings = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreviousWritings();
+  }
+
+  Future<void> _loadPreviousWritings() async {
+    if (widget.text.id == null) return;
+    final writings = await _dbHelper.getWritingAnswersByTextId(widget.text.id!);
+    setState(() {
+      _previousWritings = writings;
+    });
+  }
 
   @override
   void dispose() {
@@ -72,10 +87,7 @@ class _WritingStageState extends State<WritingStage> {
             const SizedBox(height: 24),
             const Text(
               'Напишите ваш текст:',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Card(
@@ -95,7 +107,7 @@ class _WritingStageState extends State<WritingStage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (_writingController.text.trim().isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -104,12 +116,27 @@ class _WritingStageState extends State<WritingStage> {
                     );
                     return;
                   }
-                  // TODO: Save writing
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Текст сохранен'),
-                    ),
+                  if (widget.text.id == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Ошибка: текст не найден')),
+                    );
+                    return;
+                  }
+
+                  final writing = WritingAnswerModel(
+                    textId: widget.text.id!,
+                    writing: _writingController.text.trim(),
                   );
+
+                  await _dbHelper.insertWritingAnswer(writing);
+                  _writingController.clear();
+                  _loadPreviousWritings();
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Текст сохранен')),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purple,
@@ -119,10 +146,76 @@ class _WritingStageState extends State<WritingStage> {
                 child: const Text('Сохранить текст'),
               ),
             ),
+            if (_previousWritings.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.history, color: Colors.purple),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Предыдущие тексты (${_previousWritings.length})',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ..._previousWritings.map(
+                (writing) => Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${writing.createdAt.day}.${writing.createdAt.month}.${writing.createdAt.year} ${writing.createdAt.hour}:${writing.createdAt.minute.toString().padLeft(2, '0')}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () async {
+                                if (writing.id != null) {
+                                  await _dbHelper.deleteWritingAnswer(
+                                    writing.id!,
+                                  );
+                                  _loadPreviousWritings();
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Текст удален'),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          writing.writing,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 }
-

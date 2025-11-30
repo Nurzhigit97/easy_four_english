@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/text_model.dart';
-import '../database/database_helper.dart';
-import '../widgets/text_card.dart';
-import '../widgets/add_edit_text_dialog.dart';
-import 'text_detail_screen.dart';
+import 'texts_screen.dart';
+import 'dictionaries_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,98 +9,28 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
-  List<TextModel> _texts = [];
-  bool _isLoading = true;
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final GlobalKey<TextsScreenState> _textsScreenKey =
+      GlobalKey<TextsScreenState>();
+  final GlobalKey<DictionariesScreenState> _dictionariesScreenKey =
+      GlobalKey<DictionariesScreenState>();
 
   @override
   void initState() {
     super.initState();
-    _loadTexts();
+    _tabController = TabController(length: 2, vsync: this);
   }
 
-  Future<void> _loadTexts() async {
-    setState(() => _isLoading = true);
-    final texts = await _dbHelper.getAllTexts();
-    setState(() {
-      _texts = texts;
-      _isLoading = false;
-    });
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
-  Future<void> _addText() async {
-    final result = await showDialog<TextModel>(
-      context: context,
-      builder: (context) => const AddEditTextDialog(),
-    );
-
-    if (result != null) {
-      await _dbHelper.insertText(result);
-      _loadTexts();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Текст успешно добавлен')));
-      }
-    }
-  }
-
-  Future<void> _editText(TextModel text) async {
-    final result = await showDialog<TextModel>(
-      context: context,
-      builder: (context) => AddEditTextDialog(text: text),
-    );
-
-    if (result != null) {
-      await _dbHelper.updateText(result);
-      _loadTexts();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Текст успешно обновлен')));
-      }
-    }
-  }
-
-  Future<void> _deleteText(TextModel text) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить текст?'),
-        content: Text('Вы уверены, что хотите удалить "${text.title}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true && text.id != null) {
-      await _dbHelper.deleteText(text.id!);
-      _loadTexts();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Текст успешно удален')));
-      }
-    }
-  }
-
-  void _navigateToDetail(TextModel text) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => TextDetailScreen(text: text)),
-    );
+  void _onFloatingActionButtonPressed() {
+    _textsScreenKey.currentState?.addText();
   }
 
   @override
@@ -112,47 +39,32 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Easy Four English'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.menu_book), text: 'Тексты'),
+            Tab(icon: Icon(Icons.book), text: 'Словари'),
+          ],
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _texts.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.menu_book, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Нет текстов',
-                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Нажмите + чтобы добавить первый текст',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                  ),
-                ],
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadTexts,
-              child: ListView.builder(
-                itemCount: _texts.length,
-                itemBuilder: (context, index) {
-                  final text = _texts[index];
-                  return TextCard(
-                    text: text,
-                    onTap: () => _navigateToDetail(text),
-                    onEdit: () => _editText(text),
-                    onDelete: () => _deleteText(text),
-                  );
-                },
-              ),
-            ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addText,
-        tooltip: 'Добавить текст',
-        child: const Icon(Icons.add),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          TextsScreen(key: _textsScreenKey),
+          DictionariesScreen(key: _dictionariesScreenKey),
+        ],
+      ),
+      floatingActionButton: AnimatedBuilder(
+        animation: _tabController,
+        builder: (context, child) {
+          return FloatingActionButton(
+            onPressed: _onFloatingActionButtonPressed,
+            tooltip: _tabController.index == 0
+                ? 'Добавить текст'
+                : 'Создать словарь',
+            child: Icon(_tabController.index == 0 ? Icons.add : Icons.book),
+          );
+        },
       ),
     );
   }
