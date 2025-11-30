@@ -24,31 +24,125 @@ class _ListeningStageState extends State<ListeningStage> {
   }
 
   Future<void> _initTts() async {
-    await flutterTts.setLanguage("en-US");
-    await flutterTts.setSpeechRate(_speechRate);
-    await flutterTts.setVolume(1.0);
-    await flutterTts.setPitch(1.0);
+    try {
+      // Получаем список доступных голосов
+      List<dynamic> voices = await flutterTts.getVoices;
 
-    flutterTts.setCompletionHandler(() {
-      setState(() {
-        _isPlaying = false;
-      });
-    });
+      // Ищем лучший голос для английского языка
+      // Приоритет: enhanced/premium голоса, затем женские голоса (обычно более приятные)
+      dynamic bestVoice;
 
-    flutterTts.setErrorHandler((msg) {
-      setState(() {
-        _isPlaying = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Ошибка воспроизведения: $msg')));
+      if (voices.isNotEmpty) {
+        // Фильтруем голоса для английского языка
+        List<dynamic> englishVoices = voices.where((voice) {
+          final locale = voice['locale']?.toString().toLowerCase() ?? '';
+          return locale.startsWith('en');
+        }).toList();
+
+        if (englishVoices.isNotEmpty) {
+          // Ищем enhanced/premium голоса
+          bestVoice = englishVoices.firstWhere((voice) {
+            final name = voice['name']?.toString().toLowerCase() ?? '';
+            return name.contains('enhanced') ||
+                name.contains('premium') ||
+                name.contains('neural') ||
+                name.contains('wave');
+          }, orElse: () => null);
+
+          // Если не нашли enhanced, ищем женские голоса (обычно более приятные)
+          if (bestVoice == null) {
+            bestVoice = englishVoices.firstWhere((voice) {
+              final name = voice['name']?.toString().toLowerCase() ?? '';
+              return name.contains('female') ||
+                  name.contains('samantha') ||
+                  name.contains('karen') ||
+                  name.contains('susan') ||
+                  name.contains('victoria');
+            }, orElse: () => englishVoices.first);
+          }
+
+          // Если все еще не нашли, берем первый английский голос
+          if (bestVoice == null) {
+            bestVoice = englishVoices.first;
+          }
+
+          // Устанавливаем выбранный голос
+          if (bestVoice != null && bestVoice['name'] != null) {
+            await flutterTts.setVoice({
+              'name': bestVoice['name'],
+              'locale': bestVoice['locale'],
+            });
+          }
+        }
       }
-    });
 
-    setState(() {
-      _isInitialized = true;
-    });
+      // Устанавливаем язык
+      await flutterTts.setLanguage("en-US");
+
+      // Настраиваем параметры для лучшего качества
+      await flutterTts.setSpeechRate(_speechRate);
+      await flutterTts.setVolume(1.0);
+      // Pitch 1.1-1.2 делает голос более приятным и естественным
+      await flutterTts.setPitch(1.15);
+
+      // На Android: пытаемся использовать лучший движок
+      try {
+        String? engine = await flutterTts.getDefaultEngine;
+        if (engine != null) {
+          await flutterTts.setEngine(engine);
+        }
+      } catch (e) {
+        // Игнорируем ошибки выбора движка
+      }
+
+      flutterTts.setCompletionHandler(() {
+        setState(() {
+          _isPlaying = false;
+        });
+      });
+
+      flutterTts.setErrorHandler((msg) {
+        setState(() {
+          _isPlaying = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка воспроизведения: $msg')),
+          );
+        }
+      });
+
+      setState(() {
+        _isInitialized = true;
+      });
+    } catch (e) {
+      // Если что-то пошло не так, используем базовые настройки
+      await flutterTts.setLanguage("en-US");
+      await flutterTts.setSpeechRate(_speechRate);
+      await flutterTts.setVolume(1.0);
+      await flutterTts.setPitch(1.15);
+
+      flutterTts.setCompletionHandler(() {
+        setState(() {
+          _isPlaying = false;
+        });
+      });
+
+      flutterTts.setErrorHandler((msg) {
+        setState(() {
+          _isPlaying = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка воспроизведения: $msg')),
+          );
+        }
+      });
+
+      setState(() {
+        _isInitialized = true;
+      });
+    }
   }
 
   Future<void> _togglePlayback() async {
